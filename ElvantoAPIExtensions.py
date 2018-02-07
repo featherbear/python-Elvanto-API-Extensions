@@ -144,7 +144,7 @@ class ElvantoAPI(ElvantoAPI):
             self.people = result
             return result
 
-        def findContact(self, first_name: str = None, middle_name: str = None, last_name: str = None, email: str = None, id: str = None, resolve: bool = True):
+        def findContact(self, id: str = None, *args, first_name: str = None, middle_name: str = None, last_name: str = None, email: str = None, resolve: bool = True):
             """
             :param first_name: search term
             :param middle_name: search term
