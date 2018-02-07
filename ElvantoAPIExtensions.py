@@ -31,6 +31,7 @@ class ElvantoAPI:
             return oauth_url + '?type=web_server&client_id={id}&redirect_uri={uri}&scope={scope}'.format(**info) + (('&state=' + State) if State else '')
         else:
             return oauth_url + '?type=user_agent&client_id={id}&redirect_uri={uri}&scope={scope}'.format(**info)
+
     def _GetTokens(ClientID, ClientSecret, Code, RedirectURI):
         """
         Gets the acccess tokens, after the user has logged into the Web App via URL provided in the getURL function
@@ -53,6 +54,7 @@ class ElvantoAPI:
         }
         data = requests.post(token_url, data=params, headers=headers)
         return json.loads(data.text)
+
     class Connection():
         def __init__(self, **auth):
             """
@@ -73,8 +75,7 @@ class ElvantoAPI:
                 self.refresh_token = auth['RefreshToken'] if 'RefreshToken' in auth else None
 
             else:  # If neither of these, invalid Auth. Raise Syntax Error
-                raise SyntaxError(
-                    'Invalid Auth method. Please use APIKey (string) or AccessToken (string), ExpiresIn (float)')
+                raise SyntaxError('Invalid Auth method. Please use APIKey (string) or AccessToken (string), ExpiresIn (float)')
 
         def _RefreshToken(self):
             """
@@ -170,3 +171,74 @@ class ElvantoAPI(ElvantoAPI):
                         _person["id"] = id
                     result.append(_person if resolve else id)
             return result
+
+import datetime
+
+class Helpers:
+    @staticmethod
+    def NextDate(day: int):
+        date_today = datetime.date.today()
+        date_next = date_today + datetime.timedelta((day - date_today.weekday()) % 7)
+        return date_next
+
+    @staticmethod
+    def ServicesOnDate(api: ElvantoAPI.Connection, date_service: datetime.datetime, fields=["plans", "volunteers", "songs"]):
+        """
+        API Request :: services/getAll
+        start | YYYY-MM-DD
+        end   | YYYY-MM-DD
+        page_size | int | minimum page size is 10
+        """
+        services = api._Post("services/getAll", page_size=10, start=str(date_service - datetime.timedelta(1)),
+                             end=str(date_service + datetime.timedelta(1)), fields=fields)
+        return services["services"]["service"]
+
+    @staticmethod
+    def ParseServices(services: list):
+        return [Helpers.ParseService(service) for service in services]
+
+    @staticmethod
+    def ParseService(service: dict):
+        newService = {
+            "id": service["id"],
+            "name": service["name"],
+            "date": service["date"],
+            "service_type": {
+                "id": service["service_type"]["id"],
+                "name": service["service_type"]["name"]
+            }
+        }
+        if "plan" in service:
+            newService["plan"] = service["plans"]["plan"][0]
+        if "songs" in service:
+            newService["songs"] = service["songs"]
+        if "volunteers" in service:
+            volunteers = []
+            for role in service["volunteers"]["plan"][0]["positions"]["position"]:
+                if role["volunteers"]: # Check if people are assigned to this role
+                    roleDict = {
+                        "position_name": role["position_name"],
+                        "department_name": role["department_name"],
+                        "sub_department_name": role["sub_department_name"],
+                        "volunteers": {}
+                    }
+                    for volunteer in role["volunteers"]["volunteer"]:
+                        roleDict["volunteers"][volunteer["person"]["id"]] = {
+                            "first_name": volunteer["person"]["preferred_name"] or volunteer["person"]["first_name"],
+                            "middle_name": volunteer["person"]["middle_name"],
+                            "last_name": volunteer["person"]["lastname"],
+                            "status": volunteer["status"]
+                        }
+                    volunteers.append(roleDict)
+            newService["volunteers"] = volunteers
+        return newService
+
+class Enums:
+    class Days:
+        MONDAY = 0
+        TUESDAY = 1
+        WEDNESDAY = 2
+        THURSDAY = 3
+        FRIDAY = 4
+        SATURDAY = 5
+        SUNDAY = 6
