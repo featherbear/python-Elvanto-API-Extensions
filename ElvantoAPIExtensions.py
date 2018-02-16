@@ -127,6 +127,18 @@ import time
 
 class ElvantoAPI(ElvantoAPI):
     class Connection(ElvantoAPI.Connection):
+        # def __init__(self, **auth):
+        #     super().__init__(**auth)
+        #
+        def servicesOnDay(self, day:int,parseServices=True):
+            return self.servicesOnDate(Helpers.NextDate(day),parseServices=parseServices)
+
+        def servicesOnDate(self, date_service: datetime.datetime, parseServices = True):
+            return Helpers.ServicesOnDate(self,date_service,parseServices=parseServices)
+
+        def servicesUpcoming(self, days: int = 7, parseServices = True):
+            return Helpers.ServicesUpcoming(self, days, parseServices)
+
         def getPeople(self):
             result = {}
             def pull(page = 1):
@@ -183,8 +195,16 @@ class Helpers:
         date_next = date_today + datetime.timedelta((day - date_today.weekday()) % 7)
         return date_next
 
+
     @staticmethod
-    def ServicesOnDate(api: ElvantoAPI.Connection, date_service: datetime.datetime, fields=["plans", "volunteers", "songs"]):
+    def ServicesUpcoming(api: ElvantoAPI.Connection, days: int = 7, parseServices=True, fields=["plans", "volunteers", "songs"]):
+        services = api._Post("services/getAll", page_size=20,start=str(datetime.date.today() - datetime.timedelta(1)), end=str(datetime.date.today() + datetime.timedelta(days)), fields=fields)
+        if "services" not in services: return []
+        return list(map(Service, services["services"]["service"]) if parseServices else services["services"]["service"])
+
+
+    @staticmethod
+    def ServicesOnDate(api: ElvantoAPI.Connection, date_service: datetime.datetime, parseServices=True, fields=["plans", "volunteers", "songs"]):
         """
         API Request :: services/getAll
         start | YYYY-MM-DD
@@ -193,7 +213,8 @@ class Helpers:
         """
         services = api._Post("services/getAll", page_size=10, start=str(date_service - datetime.timedelta(1)),
                              end=str(date_service + datetime.timedelta(1)), fields=fields)
-        return services["services"]["service"]
+        if "services" not in services: return []
+        return list(map(Service, services["services"]["service"]) if parseServices else services["services"]["service"])
 
     @staticmethod
     def utc_to_local(utc_datetime):
