@@ -122,6 +122,9 @@ class ElvantoAPI:
             return info
 #endregion
 
+import datetime
+import time
+
 class ElvantoAPI(ElvantoAPI):
     class Connection(ElvantoAPI.Connection):
         def getPeople(self):
@@ -172,7 +175,6 @@ class ElvantoAPI(ElvantoAPI):
                     result.append(_person if resolve else id)
             return result
 
-import datetime
 
 class Helpers:
     @staticmethod
@@ -194,44 +196,10 @@ class Helpers:
         return services["services"]["service"]
 
     @staticmethod
-    def ParseServices(services: list):
-        return [Helpers.ParseService(service) for service in services]
-
-    @staticmethod
-    def ParseService(service: dict):
-        newService = {
-            "id": service["id"],
-            "name": service["name"],
-            "date": service["date"],
-            "service_type": {
-                "id": service["service_type"]["id"],
-                "name": service["service_type"]["name"]
-            }
-        }
-        if "plan" in service:
-            newService["plan"] = service["plans"]["plan"][0]
-        if "songs" in service:
-            newService["songs"] = service["songs"]
-        if "volunteers" in service:
-            volunteers = []
-            for role in service["volunteers"]["plan"][0]["positions"]["position"]:
-                if role["volunteers"]: # Check if people are assigned to this role
-                    roleDict = {
-                        "position_name": role["position_name"],
-                        "department_name": role["department_name"],
-                        "sub_department_name": role["sub_department_name"],
-                        "volunteers": {}
-                    }
-                    for volunteer in role["volunteers"]["volunteer"]:
-                        roleDict["volunteers"][volunteer["person"]["id"]] = {
-                            "first_name": volunteer["person"]["preferred_name"] or volunteer["person"]["first_name"],
-                            "middle_name": volunteer["person"]["middle_name"],
-                            "last_name": volunteer["person"]["lastname"],
-                            "status": volunteer["status"]
-                        }
-                    volunteers.append(roleDict)
-            newService["volunteers"] = volunteers
-        return newService
+    def utc_to_local(utc_datetime):
+        now_timestamp = time.time()
+        offset = datetime.datetime.fromtimestamp(now_timestamp) - datetime.datetime.utcfromtimestamp(now_timestamp)
+        return utc_datetime + offset
 
 class Enums:
     class Days:
@@ -242,3 +210,134 @@ class Enums:
         FRIDAY = 4
         SATURDAY = 5
         SUNDAY = 6
+
+class Service:
+    def __repr__(self):
+        return "%s @ %s" % (self.name, self.date.strftime("%#I:%M%p %d/%m/%Y"))
+    def __init__(self, serviceDict):
+        self._data = serviceDict
+        class Type:
+            @property
+            def id(this):
+                return self._data["service_type"]["id"]
+
+            @property
+            def name(this):
+                return self._data["service_type"]["name"]
+        self.type = Type()
+
+        class Location:
+            @property
+            def id(this):
+                return self._data["location"]["id"]
+
+            @property
+            def name(this):
+                return self._data["location"]["name"]
+        self.location = Location()
+
+
+        class Songs(list):
+            def __new__(cls):
+                return None
+            # raise NotImplementedError
+            pass
+        self.songs = Songs() if "songs" in self._data else None
+
+        class Volunteers:
+            # class Volunteer:
+            #     def __init__(self, ):
+            #     def __repr__:
+            #
+            #     pass
+
+            def __init__(this):
+                this.root = self._data["volunteers"]["plan"][0]["positions"]["position"]
+
+                class People(dict):
+                    def __repr__(self):
+                        return str(list(map(lambda v: "%s %s%s" % (
+                        v["preferred_name"] or v["firstname"],
+                        (v["middle_name"] + " ") if v["middle_name"] else "", v["lastname"]), self)))
+
+                this.people = People()
+
+                for role in this.root:
+                    if "volunteers" in role and role["volunteers"]:
+                        for volunteer in role["volunteers"]["volunteer"]:
+                            volunteer = volunteer["person"]  # ignore the status key
+                            if volunteer["id"] not in this.people:
+                                this.people[volunteer["id"]] = volunteer
+                                this.people[volunteer["id"]]["roles"] = []
+                            _role = role.copy()
+                            del _role["volunteers"]
+                            this.people[volunteer["id"]]["roles"].append(_role)
+
+            def byDepartmentId(self, id):
+                return list(filter(lambda r: r["department_id"].lower() == id.lower(), self.root))
+
+            def byDepartmentName(self, name):
+                return list(filter(lambda r: r["department_name"].lower() == name.lower(), self.root))
+
+            def bySubDepartmentId(self, id):
+                return list(filter(lambda r: r["sub_department_id"].lower() == id.lower(), self.root))
+
+            def bySubDepartmentName(self, name):
+                return list(filter(lambda r: r["sub_department_name"].lower() == name.lower(), self.root))
+
+            def byPositionId(self, id):
+                return list(filter(lambda r: r["position_id"].lower() == id.lower(), self.root))
+
+            def byPositionName(self, name):
+                return list(filter(lambda r: r["position_name"].lower() == name.lower(), self.root))
+        self.volunteers = Volunteers() if "volunteers" in self._data else None
+
+        class Plan(list):
+            class BaseItem:
+                def __new__(cls, data):
+                    __obj = object.__new__(cls)
+                    __obj.id = data["id"]
+                    __obj.title = data["title"]
+                    return __obj
+
+                def __repr__(self):
+                    return '%s("%s")' % (self.__class__.__name__, self.title)
+
+            class Header(BaseItem):
+                pass
+
+            class Item(BaseItem):
+                def __init__(self, data):
+                    self.description = data["description"]
+                    self.duration = data["duration"]
+
+            class Song(Item):
+                def __init__(self, data):
+                    super().__init__(data)
+                    self.song = data["song"]
+
+            def __generateObject(self, data):
+                if data["song"]:
+                    return self.Song(data)
+                elif data["heading"] == 1:
+                    return self.Header(data)
+                else:
+                    return self.Item(data)
+
+            def __init__(this):
+                list.__init__(this, map(this.__generateObject, self._data["plans"]["plan"][0]["items"]["item"]))
+        self.plan = Plan() if "plans" in self._data else None
+
+    @property
+    def id(self):
+        return self._data["id"]
+
+    @property
+    def name(self):
+        return self._data["name"]
+
+    @property
+    def date(self):
+        return Helpers.utc_to_local(datetime.datetime.strptime(self._data["date"], "%Y-%m-%d %H:%M:%S"))
+
+
