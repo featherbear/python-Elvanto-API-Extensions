@@ -1,11 +1,13 @@
 # region ElvantoAPI | github.com/elvanto/api-py
 # import ElvantoAPI
-import requests
 import json
+
+import requests
 
 oauth_url = "https://api.elvanto.com/oauth"
 token_url = "https://api.elvanto.com/oauth/token"
 api_url = "https://api.elvanto.com/v1/"
+
 
 class ElvantoAPI:
     def _AuthorizeURL(ClientID, RedirectURI, Scope, IsWebApp, State=None):
@@ -28,7 +30,8 @@ class ElvantoAPI:
             'scope': Scope
         }
         if IsWebApp:
-            return oauth_url + '?type=web_server&client_id={id}&redirect_uri={uri}&scope={scope}'.format(**info) + (('&state=' + State) if State else '')
+            return oauth_url + '?type=web_server&client_id={id}&redirect_uri={uri}&scope={scope}'.format(**info) + (
+                ('&state=' + State) if State else '')
         else:
             return oauth_url + '?type=user_agent&client_id={id}&redirect_uri={uri}&scope={scope}'.format(**info)
 
@@ -48,7 +51,8 @@ class ElvantoAPI:
             'code': Code,
             'redirect_uri': RedirectURI
         }
-        params = 'grant_type=authorization_code&client_id={client_id}&client_secret={client_secret}&code={code}&redirect_uri={redirect_uri}'.format(**info)
+        params = 'grant_type=authorization_code&client_id={client_id}&client_secret={client_secret}&code={code}&redirect_uri={redirect_uri}'.format(
+            **info)
         headers = {
             'Content-Type': 'application/x-www-form-urlencoded'
         }
@@ -75,7 +79,8 @@ class ElvantoAPI:
                 self.refresh_token = auth['RefreshToken'] if 'RefreshToken' in auth else None
 
             else:  # If neither of these, invalid Auth. Raise Syntax Error
-                raise SyntaxError('Invalid Auth method. Please use APIKey (string) or AccessToken (string), ExpiresIn (float)')
+                raise SyntaxError(
+                    'Invalid Auth method. Please use APIKey (string) or AccessToken (string), ExpiresIn (float)')
 
         def _RefreshToken(self):
             """
@@ -120,29 +125,34 @@ class ElvantoAPI:
                             'status': 'Token expired please renew'
                         }
             return info
-#endregion
+
+
+# endregion
 
 import datetime
 import time
+
 
 class ElvantoAPI(ElvantoAPI):
     class Connection(ElvantoAPI.Connection):
         # def __init__(self, **auth):
         #     super().__init__(**auth)
         #
-        def servicesOnDay(self, day:int,parseServices=True):
-            return self.servicesOnDate(Helpers.NextDate(day),parseServices=parseServices)
+        def servicesOnDay(self, day: int, *, locationName=None, locationID=None, parseServices=True, fields=None):
+            return Helpers.FilterLocation(self.servicesOnDate(Helpers.NextDate(day), parseServices=parseServices),locationName,locationID)
 
-        def servicesOnDate(self, date_service: datetime.datetime, parseServices = True):
-            return Helpers.ServicesOnDate(self,date_service,parseServices=parseServices)
+        def servicesOnDate(self, date_service: datetime.datetime, *, locationName=None, locationID=None,
+                           parseServices=True, fields=None):
+            return Helpers.FilterLocation(Helpers.ServicesOnDate(self, date_service, parseServices=parseServices),locationName,locationID)
 
-        def servicesUpcoming(self, days: int = 7, parseServices = True):
-            return Helpers.ServicesUpcoming(self, days, parseServices)
+        def servicesUpcoming(self, days: int = 7, *, locationName=None, locationID=None, parseServices=True, fields = None):
+            return Helpers.FilterLocation(Helpers.ServicesUpcoming(self, days=days, parseServices=parseServices),locationName,locationID)
 
         def getPeople(self):
             result = {}
-            def pull(page = 1):
-                resp = self._Post("people/getAll", page = page)
+
+            def pull(page=1):
+                resp = self._Post("people/getAll", page=page)
                 assert resp["status"] == "ok"
                 resp = resp["people"]
                 for person in resp["person"]:
@@ -153,13 +163,15 @@ class ElvantoAPI(ElvantoAPI):
                         "email": person["email"]
                     }
                 _pageNo = int(resp["page"])
-                if (resp["total"] - (_pageNo-1) * resp["per_page"] - resp["on_this_page"]) > 0:
-                    pull(page=_pageNo+1)
+                if (resp["total"] - (_pageNo - 1) * resp["per_page"] - resp["on_this_page"]) > 0:
+                    pull(page=_pageNo + 1)
+
             pull()
             self.people = result
             return result
 
-        def findContact(self, id: str = None, *args, first_name: str = None, middle_name: str = None, last_name: str = None, email: str = None, resolve: bool = True):
+        def findContact(self, id: str = None, *args, first_name: str = None, middle_name: str = None,
+                        last_name: str = None, email: str = None, resolve: bool = True):
             """
             :param first_name: search term
             :param middle_name: search term
@@ -174,13 +186,16 @@ class ElvantoAPI(ElvantoAPI):
                     return [self.people[id]]
                 raise Exception("ID not found in contacts")
 
-            if not any([first_name,middle_name,last_name,email]):
+            if not any([first_name, middle_name, last_name, email]):
                 raise Exception("No keyword arguments specified")
 
             result = []
             for id in self.people:
                 person = self.people[id]
-                if all([(first_name.lower() in person["first_name"].lower() if first_name else True), (middle_name.lower() in person["middle_name"].lower() if middle_name else True), (last_name.lower() in person["last_name"].lower() if last_name else True), (email.lower() in person["email"].lower() if email else True)]):
+                if all([(first_name.lower() in person["first_name"].lower() if first_name else True),
+                        (middle_name.lower() in person["middle_name"].lower() if middle_name else True),
+                        (last_name.lower() in person["last_name"].lower() if last_name else True),
+                        (email.lower() in person["email"].lower() if email else True)]):
                     if resolve:
                         _person = person
                         _person["id"] = id
@@ -190,21 +205,31 @@ class ElvantoAPI(ElvantoAPI):
 
 class Helpers:
     @staticmethod
+    def FilterLocation(services:list, locationName:str, locationID:str):
+        if locationName: return list(filter(lambda serviceObj: serviceObj.location.name.lower() == locationName.lower(), services))
+        if locationID: return list(filter(lambda serviceObj: serviceObj.location.id.lower() == locationID.lower(),services))
+        return services
+
+    @staticmethod
     def NextDate(day: int):
+        # 0 - 6
         date_today = datetime.date.today()
         date_next = date_today + datetime.timedelta((day - date_today.weekday()) % 7)
         return date_next
 
-
     @staticmethod
-    def ServicesUpcoming(api: ElvantoAPI.Connection, days: int = 7, parseServices=True, fields=["plans", "volunteers", "songs"]):
-        services = api._Post("services/getAll", page_size=20,start=str(datetime.date.today() - datetime.timedelta(1)), end=str(datetime.date.today() + datetime.timedelta(days)), fields=fields)
+    def ServicesUpcoming(api: ElvantoAPI.Connection, days: int = 7, parseServices=True,
+                         fields=None):
+        if fields is None: fields = ["plans", "volunteers", "songs"]
+        services = api._Post("services/getAll", page_size=20, start=str(datetime.date.today() - datetime.timedelta(1)),
+                             end=str(datetime.date.today() + datetime.timedelta(days)), fields=fields)
         if "services" not in services: return []
         return list(map(Service, services["services"]["service"]) if parseServices else services["services"]["service"])
 
-
     @staticmethod
-    def ServicesOnDate(api: ElvantoAPI.Connection, date_service: datetime.datetime, parseServices=True, fields=["plans", "volunteers", "songs"]):
+    def ServicesOnDate(api: ElvantoAPI.Connection, date_service: datetime.datetime, parseServices=True,
+                       fields=None):
+        if fields is None: fields = ["plans", "volunteers", "songs"]
         """
         API Request :: services/getAll
         start | YYYY-MM-DD
@@ -222,6 +247,7 @@ class Helpers:
         offset = datetime.datetime.fromtimestamp(now_timestamp) - datetime.datetime.utcfromtimestamp(now_timestamp)
         return utc_datetime + offset
 
+
 class Enums:
     class Days:
         MONDAY = 0
@@ -232,11 +258,15 @@ class Enums:
         SATURDAY = 5
         SUNDAY = 6
 
+
 class Service:
     def __repr__(self):
         return "%s @ %s" % (self.name, self.date.strftime("%#I:%M%p %d/%m/%Y"))
+
     def __init__(self, serviceDict):
+
         self._data = serviceDict
+
         class Type:
             @property
             def id(this):
@@ -245,6 +275,7 @@ class Service:
             @property
             def name(this):
                 return self._data["service_type"]["name"]
+
         self.type = Type()
 
         class Location:
@@ -255,62 +286,76 @@ class Service:
             @property
             def name(this):
                 return self._data["location"]["name"]
-        self.location = Location()
 
+        self.location = Location()
 
         class Songs(list):
             def __new__(cls):
                 return None
             # raise NotImplementedError
             pass
+
         self.songs = Songs() if "songs" in self._data else None
 
         class Volunteers:
-            # class Volunteer:
-            #     def __init__(self, ):
-            #     def __repr__:
-            #
-            #     pass
+
+            class Person():
+                def __init__(self, root):
+                    self.root = root
+
+                def __repr__(self):
+                    return self.name
+                def __str__(self):
+                    return self.id
+
+                @property
+                def name(self):
+                    return "%s %s%s" % (self.root["person"]["preferred_name"] or self.root["person"]["firstname"],
+                                        (self.root["person"]["middle_name"] + " ") if self.root["person"]["middle_name"] else "",
+                                        self.root["person"]["lastname"])
+
+                @property
+                def id(self):
+                    return self.root["person"]["id"]
 
             def __init__(this):
                 this.root = self._data["volunteers"]["plan"][0]["positions"]["position"]
 
-                class People(dict):
-                    def __repr__(self):
-                        return str(list(map(lambda v: "%s %s%s" % (
-                        v["preferred_name"] or v["firstname"],
-                        (v["middle_name"] + " ") if v["middle_name"] else "", v["lastname"]), self)))
+                # this.people = dict()
+                #
+                # for role in this.root:
+                #     if "volunteers" in role and role["volunteers"]:
+                #         for volunteer in role["volunteers"]["volunteer"]:
+                #             volunteer = volunteer["person"]  # ignore the status key
+                #             if volunteer["id"] not in this.people:
+                #                 this.people[volunteer["id"]] = volunteer
+                #                 this.people[volunteer["id"]]["roles"] = []
+                #             _role = role.copy()
+                #             del _role["volunteers"]
+                #             this.people[volunteer["id"]]["roles"].append(_role)
 
-                this.people = People()
-
-                for role in this.root:
-                    if "volunteers" in role and role["volunteers"]:
-                        for volunteer in role["volunteers"]["volunteer"]:
-                            volunteer = volunteer["person"]  # ignore the status key
-                            if volunteer["id"] not in this.people:
-                                this.people[volunteer["id"]] = volunteer
-                                this.people[volunteer["id"]]["roles"] = []
-                            _role = role.copy()
-                            del _role["volunteers"]
-                            this.people[volunteer["id"]]["roles"].append(_role)
+            @staticmethod
+            def __map(listObj: list):
+                return map(Volunteers.Person, next(listObj)["volunteers"]["volunteer"])
 
             def byDepartmentId(self, id):
-                return list(filter(lambda r: r["department_id"].lower() == id.lower(), self.root))
+                return list(self.__map(filter(lambda r: r["department_id"].lower() == id.lower(), self.root)))
 
             def byDepartmentName(self, name):
-                return list(filter(lambda r: r["department_name"].lower() == name.lower(), self.root))
+                return list(self.__map(filter(lambda r: r["department_name"].lower() == name.lower(), self.root)))
 
             def bySubDepartmentId(self, id):
-                return list(filter(lambda r: r["sub_department_id"].lower() == id.lower(), self.root))
+                return list(self.__map(filter(lambda r: r["sub_department_id"].lower() == id.lower(), self.root)))
 
             def bySubDepartmentName(self, name):
-                return list(filter(lambda r: r["sub_department_name"].lower() == name.lower(), self.root))
+                return list(self.__map(filter(lambda r: r["sub_department_name"].lower() == name.lower(), self.root)))
 
             def byPositionId(self, id):
-                return list(filter(lambda r: r["position_id"].lower() == id.lower(), self.root))
+                return list(self.__map(filter(lambda r: r["position_id"].lower() == id.lower(), self.root)))
 
             def byPositionName(self, name):
-                return list(filter(lambda r: r["position_name"].lower() == name.lower(), self.root))
+                return list(self.__map(filter(lambda r: r["position_name"].lower() == name.lower(), self.root)))
+
         self.volunteers = Volunteers() if "volunteers" in self._data else None
 
         class Plan(list):
@@ -336,6 +381,24 @@ class Service:
                 def __init__(self, data):
                     super().__init__(data)
                     self.song = data["song"]
+                    """
+                    self.song = {
+                    'id': '8e113769-4a5a-11e7-ba01-061a3b9c64af',
+                    'ccli_number': '6016351',
+                    'title': '10,000 Reasons',
+                    'artist': 'Redman',
+                    'album': '',
+                    'arrangement': {
+                        'id': '8e123525-4a5a-11e7-ba01-061a3b9c64af',
+                        'title': 'Standard Arrangement',
+                        'bpm': '0',
+                        'duration': '00:00',
+                        'sequence': '',
+                        'key_id': None,
+                        'key_name': '',
+                        'key': None}
+                    }
+                    """
 
             def __generateObject(self, data):
                 if data["song"]:
@@ -346,6 +409,8 @@ class Service:
                     return self.Item(data)
 
             def __init__(this):
+                if "plan" not in self._data["plans"]:
+                    return
                 list.__init__(this, map(this.__generateObject, self._data["plans"]["plan"][0]["items"]["item"]))
         self.plan = Plan() if "plans" in self._data else None
 
@@ -360,5 +425,3 @@ class Service:
     @property
     def date(self):
         return Helpers.utc_to_local(datetime.datetime.strptime(self._data["date"], "%Y-%m-%d %H:%M:%S"))
-
-
